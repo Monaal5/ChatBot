@@ -9,16 +9,16 @@ const mockCompanies: Company[] = [
     name: "Acme Inc",
     status: "active",
     joinDate: "2023-10-15",
-    plan: "pro"
+    plan: "pro" as const
   },
   {
     id: "2",
     name: "Globex Corp",
     status: "pending",
     joinDate: "2023-10-10",
-    plan: "free"
+    plan: "free" as const
   },
-  // Add more mock data as needed
+  // Add more mock data as needed, using only "pro", "free", or "enterprise" for plan
 ];
 
 export default function DashboardPage() {
@@ -43,7 +43,12 @@ export default function DashboardPage() {
             <CardTitle>Analytics Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <OverviewChart />
+            <OverviewChart data={[
+              { month: "Jan", growth: 10 },
+              { month: "Feb", growth: 15 },
+              { month: "Mar", growth: 20 },
+              // Add more data as needed
+            ]} />
           </CardContent>
         </Card>
 

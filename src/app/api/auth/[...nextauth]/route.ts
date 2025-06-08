@@ -6,12 +6,42 @@ import { SupabaseAdapter } from "@auth/supabase-adapter";
 import { createClient } from '@supabase/supabase-js';
 import { compare } from 'bcryptjs';
 import type { Adapter } from "next-auth/adapters";
+import type { JWT } from "next-auth/jwt";
+import type { Session, DefaultSession } from "next-auth";
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// 1. Environment Validation
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const authSecret = process.env.AUTH_SECRET;
+
+if (!supabaseUrl || !supabaseKey || !googleClientId || !googleClientSecret || !authSecret) {
+  throw new Error("Missing required environment variables");
+}
+
+// 2. Type Definitions
+interface User {
+  id: string;
+  email: string;
+  name?: string;
+  role: "company" | "customer" | "admin";
+  companyId: string;
+  password_hash?: string;
+}
+
+interface CustomSession extends Session {
+  user: User & DefaultSession["user"];
+}
+
+interface CustomJWT extends JWT {
+  id?: string;
+  role?: string;
+  companyId?: string;
+}
+
+// 3. Supabase Client (Single Instance)
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const {
   handlers: { GET, POST },
@@ -20,24 +50,24 @@ export const {
   signOut,
 } = NextAuth({
   adapter: SupabaseAdapter({
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    secret: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    url: supabaseUrl,
+    secret: supabaseKey,
   }) as Adapter,
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
     }),
     Email({
       server: {
-        host: process.env.EMAIL_SERVER_HOST!,
-        port: Number(process.env.EMAIL_SERVER_PORT!),
+        host: process.env.EMAIL_SERVER_HOST || "",
+        port: Number(process.env.EMAIL_SERVER_PORT || 587),
         auth: {
-          user: process.env.EMAIL_SERVER_USER!,
-          pass: process.env.EMAIL_SERVER_PASSWORD!,
+          user: process.env.EMAIL_SERVER_USER || "",
+          pass: process.env.EMAIL_SERVER_PASSWORD || "",
         },
       },
-      from: process.env.EMAIL_FROM!,
+      from: process.env.EMAIL_FROM || "",
     }),
     Credentials({
       name: 'Credentials',
@@ -48,22 +78,22 @@ export const {
       async authorize(credentials) {
         try {
           if (!credentials?.email || !credentials?.password) {
-            throw new Error("Missing credentials");
+            throw new Error("Invalid email or password");
           }
 
           const { data: user, error } = await supabase
             .from('users')
-            .select('*')
+            .select('id, email, password_hash, name, role, company_id')
             .eq('email', credentials.email)
             .single();
 
           if (error || !user?.password_hash) {
-            throw new Error("User not found");
+            throw new Error("Invalid email or password");
           }
           
           const passwordMatch = await compare(credentials.password, user.password_hash);
           if (!passwordMatch) {
-            throw new Error("Invalid password");
+            throw new Error("Invalid email or password");
           }
 
           return {
@@ -81,19 +111,42 @@ export const {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }: { 
+      token: CustomJWT, 
+      user?: User | import("next-auth").User | null, 
+      trigger?: "signIn" | "signUp" | "update" 
+    }) {
+      if (trigger === "update") {
+        const { data: updatedUser } = await supabase
+          .from('users')
+          .select('role, company_id')
+          .eq('id', token.id)
+          .single();
+          
+        if (updatedUser) {
+          token.role = updatedUser.role;
+          token.companyId = updatedUser.company_id;
+        }
+      }
+      
       if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.companyId = user.companyId;
+        // Handle both custom User and NextAuth User types
+        token.id = (user as any).id;
+        token.role = (user as any).role;
+        token.companyId = (user as any).companyId ?? (user as any).company_id;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: Session, token: JWT }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.companyId = token.companyId as string;
+        // Ensure required fields are present and fallback to empty string if missing
+        session.user.id = (token.id as string) ?? "";
+        const allowedRoles = ["company", "admin", "customer"] as const;
+        session.user.role = allowedRoles.includes(token.role as any) ? (token.role as User["role"]) : "customer";
+        session.user.companyId = (token.companyId as string) ?? "";
+        session.user.email = session.user.email ?? "";
+        session.user.name = session.user.name ?? "";
+        session.user.image = session.user.image ?? "";
       }
       return session;
     },
@@ -105,8 +158,8 @@ export const {
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: parseInt(process.env.SESSION_MAX_AGE || "2592000"), // 30 days default
   },
-  secret: process.env.AUTH_SECRET!,
+  secret: authSecret,
   debug: process.env.NODE_ENV === 'development',
 });

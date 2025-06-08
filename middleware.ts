@@ -1,7 +1,8 @@
 import { auth } from "@/app/api/auth/[...nextauth]/route";
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export default auth((req:any)=> {
+export default auth((req: NextRequest & { auth?: any }) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
 
@@ -12,23 +13,20 @@ export default auth((req:any)=> {
     { path: /^\/chat/, roles: ['customer'] },
   ];
 
-  // Check if the current route is protected
+  // Check if the current route matches a protected route
   const matchedRoute = protectedRoutes.find((route) =>
     route.path.test(nextUrl.pathname)
   );
 
   if (matchedRoute) {
     if (!isLoggedIn) {
-      // Redirect to login if not authenticated
-      const loginUrl = new URL('/login', nextUrl.origin);
+      const loginUrl = new URL('/auth/login', nextUrl.origin);
       loginUrl.searchParams.set('callbackUrl', nextUrl.pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    // Check if user has the required role
     const userRole = req.auth?.user?.role;
-    if (!matchedRoute.roles.includes(userRole)) {
-      // Redirect to home if role doesn't match
+    if (!userRole || !matchedRoute.roles.includes(userRole)) {
       return NextResponse.redirect(new URL('/', nextUrl.origin));
     }
   }

@@ -1,7 +1,10 @@
-export type Company = {
+export type Status = 'active' | 'pending' | 'inactive';
+export type Plan = 'pro' | 'free' | 'enterprise';
+
+export interface Company {
   id: string;
   name: string;
-  status: "active" | "pending" | "inactive";
+  status: Status;
   joinDate: string;
-  plan: string;
-};
+  plan: Plan;
+}

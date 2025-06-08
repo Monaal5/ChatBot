@@ -1,20 +1,23 @@
 import { auth } from "@/app/api/auth/[...nextauth]/route";
 import { redirect } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+
+type UserRole = 'admin' | 'company' | 'customer';
 
 export default async function Home() {
   const session = await auth();
 
-  if (session?.user) {
-    switch (session.user.role) {
-      case 'admin':
-        redirect('/admin/dashboard');
-      case 'company':
-        redirect('/company/dashboard');
-      case 'customer':
-        redirect('/chat');
-    }
+  const roleRedirectMap: Record<UserRole, string> = {
+    admin: '/admin/dashboard',
+    company: '/company/dashboard',
+    customer: '/chat',
+  };
+
+  const userRole = session?.user?.role as UserRole | undefined;
+
+  if (userRole && roleRedirectMap[userRole]) {
+    return redirect(roleRedirectMap[userRole]);
   }
 
   return (
@@ -23,10 +26,10 @@ export default async function Home() {
         <nav className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-primary">MarketingBot</h1>
           <div className="flex items-center space-x-4">
-            <Link href="/login">
+            <Link href="/login" aria-label="Login">
               <Button variant="ghost">Login</Button>
             </Link>
-            <Link href="/register">
+            <Link href="/register" aria-label="Register">
               <Button>Get Started</Button>
             </Link>
           </div>
@@ -43,10 +46,12 @@ export default async function Home() {
           </p>
           <div className="flex justify-center space-x-4">
             <Link href="/register?role=company">
-              <Button size="lg">For Companies</Button>
+              <Button size="lg" aria-label="Register as company">
+                For Companies
+              </Button>
             </Link>
             <Link href="/demo">
-              <Button size="lg" variant="outline">
+              <Button size="lg" variant="outline" aria-label="Try demo">
                 Live Demo
               </Button>
             </Link>
@@ -54,24 +59,30 @@ export default async function Home() {
         </section>
 
         <section className="mt-24 grid md:grid-cols-3 gap-8">
-          <div className="bg-background p-6 rounded-lg border">
-            <h3 className="font-semibold text-lg mb-3">Knowledge Base Integration</h3>
-            <p className="text-muted-foreground">
-              Upload your documents and provide accurate answers from your company resources.
-            </p>
-          </div>
-          <div className="bg-background p-6 rounded-lg border">
-            <h3 className="font-semibold text-lg mb-3">AI-Powered Responses</h3>
-            <p className="text-muted-foreground">
-              When answers aren't in your docs, our AI generates helpful responses.
-            </p>
-          </div>
-          <div className="bg-background p-6 rounded-lg border">
-            <h3 className="font-semibold text-lg mb-3">White-Label Solution</h3>
-            <p className="text-muted-foreground">
-              Fully customizable widget to match your brand identity.
-            </p>
-          </div>
+          {[
+            {
+              title: "Knowledge Base Integration",
+              description: "Upload your documents and provide accurate answers from your company resources."
+            },
+            {
+              title: "AI-Powered Responses",
+              description: "When answers aren't in your docs, our AI generates helpful responses."
+            },
+            {
+              title: "White-Label Solution",
+              description: "Fully customizable widget to match your brand identity."
+            }
+          ].map((feature, index) => (
+            <div 
+              key={index}
+              className="bg-background p-6 rounded-lg border hover:shadow-lg transition-shadow"
+            >
+              <h3 className="font-semibold text-lg mb-3">{feature.title}</h3>
+              <p className="text-muted-foreground">
+                {feature.description}
+              </p>
+            </div>
+          ))}
         </section>
       </main>
     </div>
